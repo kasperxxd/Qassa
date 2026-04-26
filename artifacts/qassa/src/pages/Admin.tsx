@@ -20,10 +20,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { format } from "date-fns";
 import { arSA } from "date-fns/locale";
-import { Users, Clock, CheckCircle2, XCircle, Trash2, Plus } from "lucide-react";
+import { Users, Clock, CheckCircle2, XCircle, Trash2, Plus, MessageCircle } from "lucide-react";
 import { toast } from "sonner";
 import { BookingStatus, GallerySection } from "@workspace/api-client-react/src/generated/api.schemas";
 import { AdminAuth, AdminLogoutButton } from "@/components/AdminAuth";
+import { openWhatsApp } from "@/lib/whatsapp";
 
 export default function Admin() {
   return (
@@ -43,12 +44,20 @@ function AdminPanel({ onLogout }: { onLogout: () => Promise<void> }) {
   const createGalleryItem = useCreateGalleryItem();
   const deleteGalleryItem = useDeleteGalleryItem();
 
-  const handleStatusChange = (id: number, status: BookingStatus) => {
+  const handleStatusChange = (
+    id: number,
+    status: BookingStatus,
+    customer?: { fullName: string; phone: string },
+  ) => {
     updateStatus.mutate({ id, data: { status } }, {
       onSuccess: () => {
         toast.success("تم تحديث الحالة بنجاح");
         queryClient.invalidateQueries({ queryKey: getListBookingsQueryKey() });
         queryClient.invalidateQueries({ queryKey: getGetAdminStatsQueryKey() });
+        if (status === "in_progress" && customer) {
+          openWhatsApp(customer.phone, customer.fullName, "in_progress");
+          toast.info("فُتحت محادثة واتساب لإبلاغ العميل بحلول دوره");
+        }
       }
     });
   };
@@ -184,20 +193,39 @@ function AdminPanel({ onLogout }: { onLogout: () => Promise<void> }) {
                           </Badge>
                         </TableCell>
                         <TableCell>
-                          <Select 
-                            value={b.status} 
-                            onValueChange={(val) => handleStatusChange(b.id, val as BookingStatus)}
-                          >
-                            <SelectTrigger className="w-[130px] h-8">
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="pending">قيد الانتظار</SelectItem>
-                              <SelectItem value="in_progress">جاري التنفيذ</SelectItem>
-                              <SelectItem value="completed">مكتمل</SelectItem>
-                              <SelectItem value="cancelled">ملغى</SelectItem>
-                            </SelectContent>
-                          </Select>
+                          <div className="flex items-center gap-2">
+                            <Select
+                              value={b.status}
+                              onValueChange={(val) =>
+                                handleStatusChange(b.id, val as BookingStatus, {
+                                  fullName: b.fullName,
+                                  phone: b.phone,
+                                })
+                              }
+                            >
+                              <SelectTrigger className="w-[130px] h-8">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="pending">قيد الانتظار</SelectItem>
+                                <SelectItem value="in_progress">جاري التنفيذ</SelectItem>
+                                <SelectItem value="completed">مكتمل</SelectItem>
+                                <SelectItem value="cancelled">ملغى</SelectItem>
+                              </SelectContent>
+                            </Select>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="h-8 px-2 text-green-700 hover:bg-green-50 hover:text-green-800"
+                              onClick={() =>
+                                openWhatsApp(b.phone, b.fullName, b.status)
+                              }
+                              title="إرسال رسالة واتساب للعميل"
+                              data-testid={`button-whatsapp-${b.id}`}
+                            >
+                              <MessageCircle className="w-4 h-4" />
+                            </Button>
+                          </div>
                         </TableCell>
                       </TableRow>
                     ))}
